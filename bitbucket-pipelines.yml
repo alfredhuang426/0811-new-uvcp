@@ -1,0 +1,155 @@
+image: node:22.2
+
+definitions:
+  stage: &install-deps-build
+    name: Install Dependencies and Build
+    steps:
+      - step:
+          name: Install Dependencies and Lint
+          caches:
+            - node
+          script:
+            - npm ci
+            - npm run lint
+          artifacts:
+            - node_modules/**
+      - step:
+          name: Build
+          script:
+            - version="${BITBUCKET_TAG:-0.0.1-alpha.$BITBUCKET_COMMIT}"
+            - npm version "${version}" --no-git-tag-version
+            - npm run build
+          artifacts:
+            - .next/**
+  steps:
+    - step: &update-version
+        name: Update Version
+        artifacts:
+          download: false
+        script: &update-version-script
+          pipe: atlassian/trigger-pipeline:5.5.1
+          variables: &update-version-variables
+            BITBUCKET_USERNAME: $BOT_USERNAME
+            BITBUCKET_APP_PASSWORD: $BOT_APP_PASSWORD
+            REPOSITORY: 'aiello-deployment'
+            REF_TYPE: 'branch'
+            REF_NAME: 'main'
+            WAIT: 'true'
+
+pipelines:
+  pull-requests:
+    '**':
+      - stage:
+          <<: *install-deps-build
+    development:
+      - stage:
+          <<: *install-deps-build
+      - step:
+          name: Build and Push Image
+          script:
+            - |
+              registry_username="${REGISTRY_USERNAME_DEV}"
+              registry_password="${REGISTRY_PASSWORD_DEV}"
+              registry="${REGISTRY_DEV}"
+              image="${registry}/${BITBUCKET_REPO_SLUG}"
+              tag="${BITBUCKET_COMMIT}"
+            - docker login "${registry}" -u "${registry_username}" -p "${registry_password}"
+            - docker build -t "${image}:${tag}" -f Dockerfile.ci .
+            - docker tag "${image}:${tag}" "${image}:latest"
+            - docker push "${image}:${tag}"
+            - docker push "${image}:latest"
+          services:
+            - docker
+      - step:
+          <<: *update-version
+          name: Update Dev Version
+          deployment: Dev
+          script:
+            - <<: *update-version-script
+              variables:
+                <<: *update-version-variables
+                CUSTOM_PIPELINE_NAME: 'update-dev-version'
+                PIPELINE_VARIABLES: >
+                  [{
+                    "key": "Application",
+                    "value": "vcp"
+                  },
+                  {
+                    "key": "Commit",
+                    "value": "$BITBUCKET_COMMIT"
+                  }]
+  tags:
+    '*.*.*-rc.*':
+      - stage: *install-deps-build
+      - step:
+          name: Build and Push Image
+          script:
+            - |
+              registry_username="${REGISTRY_USERNAME_PROD}"
+              registry_password="${REGISTRY_PASSWORD_PROD}"
+              registry="${REGISTRY_PROD}"
+              image="${registry}/${BITBUCKET_REPO_SLUG}"
+              tag="${BITBUCKET_TAG}"
+            - docker login "${registry}" -u "${registry_username}" -p "${registry_password}"
+            - docker build -t "${image}:${tag}" -f Dockerfile.ci .
+            - docker tag "${image}:${tag}" "${image}:latest"
+            - docker push "${image}:${tag}"
+            - docker push "${image}:latest"
+          services:
+            - docker
+      - step:
+          <<: *update-version
+          name: Update Stg Version
+          deployment: Stg
+          trigger: manual
+          script:
+            - <<: *update-version-script
+              variables:
+                <<: *update-version-variables
+                CUSTOM_PIPELINE_NAME: 'update-stg-version'
+                PIPELINE_VARIABLES: >
+                  [{
+                    "key": "Application",
+                    "value": "vcp"
+                  },
+                  {
+                    "key": "Version",
+                    "value": "$BITBUCKET_TAG"
+                  }]
+    '*.*.*':
+      - stage: *install-deps-build
+      - step:
+          name: Build and Push Image
+          script:
+            - |
+              registry_username="${REGISTRY_USERNAME_PROD}"
+              registry_password="${REGISTRY_PASSWORD_PROD}"
+              registry="${REGISTRY_PROD}"
+              image="${registry}/${BITBUCKET_REPO_SLUG}"
+              tag="${BITBUCKET_TAG}"
+            - docker login "${registry}" -u "${registry_username}" -p "${registry_password}"
+            - docker build -t "${image}:${tag}" -f Dockerfile.ci .
+            - docker tag "${image}:${tag}" "${image}:latest"
+            - docker push "${image}:${tag}"
+            - docker push "${image}:latest"
+          services:
+            - docker
+      - step:
+          <<: *update-version
+          name: Update Prod Version
+          deployment: Prod
+          trigger: manual
+          script:
+            - <<: *update-version-script
+              variables:
+                <<: *update-version-variables
+                CUSTOM_PIPELINE_NAME: 'update-prod-version'
+                PIPELINE_VARIABLES: >
+                  [{
+                    "key": "Application",
+                    "value": "vcp"
+                  },
+                  {
+                    "key": "Version",
+                    "value": "$BITBUCKET_TAG"
+                  }]

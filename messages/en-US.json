@@ -1,0 +1,7 @@
+{
+  "VideoCompressor": {
+    "upload": "Upload",
+    "compressing": "Compressing",
+    "cancel": "Cancel"
+  }
+} 
