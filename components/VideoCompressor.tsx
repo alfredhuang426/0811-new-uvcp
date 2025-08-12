@@ -65,7 +65,7 @@ const VideoCompressorContent: React.FC<{ componentId: string | null }> = ({ comp
 
       // Load FFmpeg using the built-in loading mechanism
       await ffmpegInstance.load({
-        coreURL: '/0811-9/ffmpeg-core.js',
+        coreURL: '/0812-13/ffmpeg-core.js',
       });
 
       setLoaded(true);
@@ -169,6 +169,7 @@ const VideoCompressorContent: React.FC<{ componentId: string | null }> = ({ comp
 
       const url = URL.createObjectURL(new Blob([data], { type: 'video/mp4' }));
       setOutputVideo(url);
+      console.log('url', url);
 
       // Calculate compression stats
       const originalSize = inputVideo.size;
